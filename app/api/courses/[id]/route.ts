@@ -2,13 +2,15 @@ import { prisma } from "@/utils/prisma";
 import { auth } from "@/lib/authHelper";
 import { NextResponse } from "next/server";
 
+// GET Request Handler
 export async function GET(
   req: Request,
-  { params }: { params: Promise<{ id: string }> }
+  { params }: { params: { id: string } }
 ) {
-  const courseId = (await params).id;
-  if (!courseId)
+  const courseId = await params.id;
+  if (!courseId) {
     return NextResponse.json({ error: "Missing id" }, { status: 400 });
+  }
 
   try {
     const course = await prisma.course.findUnique({
@@ -28,18 +30,20 @@ export async function GET(
   }
 }
 
-// ✅ PUT Request Handler
+// PUT Request Handler
 export async function PUT(
   req: Request,
   { params }: { params: { id: string } }
 ) {
-  const courseId = params.id;
-  if (!courseId)
+  const courseId = await params.id; 
+  if (!courseId) {
     return NextResponse.json({ error: "Missing id" }, { status: 400 });
+  }
 
   const session = await auth();
-  if (!session)
+  if (!session) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
 
   try {
     const { name, description } = await req.json();
