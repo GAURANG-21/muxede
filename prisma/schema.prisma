@@ -104,7 +104,7 @@ model Video {
   status            String  @default("preparing")
   posterTime        Float?
 
-  @@index([ownerId])
+  @@unique([ownerId])
 }
 
 model UserLessonProgress {
