@@ -5,14 +5,14 @@ import { NextResponse } from "next/server";
 // ✅ POST Request Handler
 export async function POST(
   req: Request,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   const session = await auth();
   if (!session)
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   try {
-    const lessonId = params.id;
+    const lessonId = (await params).id;
     if (!lessonId)
       return NextResponse.json({ error: "Missing lesson ID" }, { status: 400 });
 

@@ -5,20 +5,24 @@ import { NextResponse } from "next/server";
 // GET Request Handler
 export async function GET(
   req: Request,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> } // Directly access params without awaiting
 ) {
-  const courseId = await params.id;
+  const courseId = (await params).id; // Directly access the id
   if (!courseId) {
     return NextResponse.json({ error: "Missing id" }, { status: 400 });
   }
 
   try {
     const course = await prisma.course.findUnique({
-      where: { id: parseInt(courseId) },
+      where: { id: parseInt(courseId, 10) }, // Specify radix for parseInt
       include: {
         lessons: true,
       },
     });
+
+    if (!course) {
+      return NextResponse.json({ error: "Course not found" }, { status: 404 });
+    }
 
     return NextResponse.json(course, { status: 200 });
   } catch (error) {
@@ -33,9 +37,9 @@ export async function GET(
 // PUT Request Handler
 export async function PUT(
   req: Request,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> } // Directly access params without awaiting
 ) {
-  const courseId = await params.id; 
+  const courseId = (await params).id; // Directly access the id
   if (!courseId) {
     return NextResponse.json({ error: "Missing id" }, { status: 400 });
   }
@@ -53,7 +57,7 @@ export async function PUT(
     // Check if the course exists and belongs to the user
     const existingCourse = await prisma.course.findFirst({
       where: {
-        id: parseInt(courseId),
+        id: parseInt(courseId, 10), // Specify radix for parseInt
         authorId: userId, // Assuming `authorId` is the correct field name in Prisma schema
       },
     });
@@ -66,7 +70,7 @@ export async function PUT(
     }
 
     const updatedCourse = await prisma.course.update({
-      where: { id: parseInt(courseId) },
+      where: { id: parseInt(courseId, 10) }, // Specify radix for parseInt
       data: { name, description },
     });
 
