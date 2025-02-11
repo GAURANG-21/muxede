@@ -13,7 +13,7 @@ export async function POST(req: NextRequest) {
   }
 
   const upload = await mux.video.uploads.create({
-    cors_origin: "https://localhost:3000",
+    cors_origin: "https://muxede-v6pd-git-master-gaurang-21s-projects.vercel.app",
     new_asset_settings: {
       playback_policy: ["public", "signed"],
       passthrough: JSON.stringify({ userId: session.user?.id }),
