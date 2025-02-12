@@ -1,68 +1,79 @@
-import { NextResponse } from "next/server";
 import { prisma } from "@/utils/prisma";
+import { auth } from "@/lib/authHelper";
+import slugify from "@sindresorhus/slugify";
+import { NextResponse } from "next/server";
 
-export async function POST(request: Request) {
+export async function POST(req: Request) {
+  const session = await auth();
+  if (!session)
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
   try {
-    const body = await request.json();
-    const { type, data } = body;
+    const { name, description, courseId, uploadId } = await req.json();
+    const userId = session.user.id;
+    console.log("Creating lesson:", { name, description, courseId, uploadId, userId });
 
-    console.log("Type of webhooks:", type);
-    // const exist = await prisma.video.findFirst({
-    //   where: {
-    //     uploadId: data.upload_id
-    //   }
-    // })
-    // console.log("Existing: ", !!exist)
-    // if(exist && data.status==="ready") return;
-    if (data.status === "waiting") {
-      console.log("Waiting is over ");
+    if (!userId) {
+      return NextResponse.json(
+        { error: "Cannot create lesson: missing user ID" },
+        { status: 412 }
+      );
     }
-    if (data.status === "asset_created") {
-      console.log("Asset is created");
+
+    // Check if the course exists and the user is the author
+    const course = await prisma.course.findFirst({
+      where: {
+        id: parseInt(courseId),
+        authorId: userId,
+      },
+    });
+
+    if (!course) {
+      return NextResponse.json(
+        { error: "Course not found or not owned by user" },
+        { status: 411 }
+      );
     }
-    if (data.status === "preparing") {
-      // console.log("Asset prepared: \n", data);
-      try {
-        const metadata = await JSON.parse(data.passthrough);
-        await prisma.video.create({
-          data: {
-            uploadId: data.upload_id,
-            ownerId: metadata.userId, // Ensure passthrough exists
-            publicPlaybackId:
-              data.playback_ids?.[
-                data.playback_ids[0].policy === "public" ? 0 : 1
-              ]?.id || null,
-            privatePlaybackId:
-              data.playback_ids?.[
-                data.playback_ids[0].policy === "public" ? 1 : 0
-              ]?.id || null,
-            duration: data.duration || null,
-            aspectRatio: data.aspect_ratio || null,
-            status: data.status,
+
+    // Check if the video exists and is owned by the user
+    const video = await prisma.video.findFirst({
+      where: {
+        uploadId: uploadId,
+        ownerId: userId,
+      },
+    });
+
+    console.log("Found video:", video);
+
+    if (!video) {
+      console.log("Video not found for uploadId:", uploadId);
+      return NextResponse.json(
+        { error: "Video not found or not owned by user" },
+        { status: 404 }
+      );
+    }
+
+    // Create the lesson
+    const lesson = await prisma.lesson.create({
+      data: {
+        name,
+        description,
+        slug: slugify(name),
+        courseId: course.id,
+        video: {
+          connect: {
+            id: video.id,
           },
-        });
-
-        // console.log("Prepared asset is: \n", created);
-      } catch (error) {
-        console.error("Error creating video instance:", error);
-      }
-    }
-    if (data.status === "ready") {
-      const updated = await prisma.video.update({
-        where: { uploadId: data.upload_id },
-        data: {
-          publicPlaybackId: data.playback_ids?.[0]?.id || null,
-          privatePlaybackId: data.playback_ids?.[1]?.id || null,
-          duration: data.duration || null,
-          aspectRatio: data.aspect_ratio || null,
-          status: data.status, // Update status to 'ready'
         },
-      });
-      // console.log("i am ready and updated: ", updated);
-      return new NextResponse(JSON.stringify(updated), { status: 200 });
-    }
-    return new NextResponse(data, { status: 200 });
-  } catch {
-    return new NextResponse("Internal Server Error", { status: 413 });
+      },
+    });
+
+    return NextResponse.json(lesson, { status: 200 });
+  } catch (error) {
+    console.error("Request error:", error);
+    return NextResponse.json(
+      { error: "Internal Server Error" },
+      { status: 500 }
+    );
   }
 }
