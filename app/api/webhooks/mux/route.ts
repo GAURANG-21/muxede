@@ -1,79 +1,61 @@
-import { prisma } from "@/utils/prisma";
-import { auth } from "@/lib/authHelper";
-import slugify from "@sindresorhus/slugify";
 import { NextResponse } from "next/server";
+import { prisma } from "@/utils/prisma";
 
-export async function POST(req: Request) {
-  const session = await auth();
-  if (!session)
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-
+export async function POST(request: Request) {
   try {
-    const { name, description, courseId, uploadId } = await req.json();
-    const userId = session.user.id;
-    console.log("Creating lesson:", { name, description, courseId, uploadId, userId });
+    const body = await request.json();
+    const { type, data } = body;
 
-    if (!userId) {
-      return NextResponse.json(
-        { error: "Cannot create lesson: missing user ID" },
-        { status: 412 }
-      );
-    }
+    console.log("Type of webhooks:", type);
+    console.log("Webhook data:", data);
 
-    // Check if the course exists and the user is the author
-    const course = await prisma.course.findFirst({
-      where: {
-        id: parseInt(courseId),
-        authorId: userId,
-      },
-    });
-
-    if (!course) {
-      return NextResponse.json(
-        { error: "Course not found or not owned by user" },
-        { status: 411 }
-      );
-    }
-
-    // Check if the video exists and is owned by the user
-    const video = await prisma.video.findFirst({
-      where: {
-        uploadId: uploadId,
-        ownerId: userId,
-      },
-    });
-
-    console.log("Found video:", video);
-
-    if (!video) {
-      console.log("Video not found for uploadId:", uploadId);
-      return NextResponse.json(
-        { error: "Video not found or not owned by user" },
-        { status: 404 }
-      );
-    }
-
-    // Create the lesson
-    const lesson = await prisma.lesson.create({
-      data: {
-        name,
-        description,
-        slug: slugify(name),
-        courseId: course.id,
-        video: {
-          connect: {
-            id: video.id,
+    // Handle asset.created event
+    if (type === "video.asset.created") {
+      try {
+        const metadata = JSON.parse(data.passthrough);
+        const video = await prisma.video.create({
+          data: {
+            uploadId: data.upload_id,
+            ownerId: metadata.userId,
+            publicPlaybackId: data.playback_ids?.[0]?.id || null,
+            privatePlaybackId: data.playback_ids?.[1]?.id || null,
+            duration: data.duration || null,
+            aspectRatio: data.aspect_ratio || null,
+            status: data.status,
           },
-        },
-      },
-    });
+        });
+        console.log("Created video record:", video);
+        return NextResponse.json(video, { status: 200 });
+      } catch (error) {
+        console.error("Error creating video record:", error);
+        return NextResponse.json({ error: "Database error" }, { status: 500 });
+      }
+    }
 
-    return NextResponse.json(lesson, { status: 200 });
+    // Handle asset.ready event
+    if (type === "video.asset.ready") {
+      try {
+        const video = await prisma.video.update({
+          where: { uploadId: data.upload_id },
+          data: {
+            publicPlaybackId: data.playback_ids?.[0]?.id || null,
+            privatePlaybackId: data.playback_ids?.[1]?.id || null,
+            duration: data.duration || null,
+            aspectRatio: data.aspect_ratio || null,
+            status: "ready",
+          },
+        });
+        console.log("Updated video record:", video);
+        return NextResponse.json(video, { status: 200 });
+      } catch (error) {
+        console.error("Error updating video record:", error);
+        return NextResponse.json({ error: "Database error" }, { status: 500 });
+      }
+    }
+
+    return NextResponse.json({ message: "Webhook received" }, { status: 200 });
   } catch (error) {
-    console.error("Request error:", error);
-    return NextResponse.json(
-      { error: "Internal Server Error" },
-      { status: 500 }
-    );
+    console.error("Webhook processing error:", error);
+    return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
   }
 }
